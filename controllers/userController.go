@@ -6,6 +6,7 @@ import (
 	"os"
 	"time"
 	"user-jwt/initializers"
+	"user-jwt/kafka"
 	"user-jwt/models"
 
 	"github.com/gin-gonic/gin"
@@ -20,32 +21,43 @@ func SignUp(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&body); err != nil {
-		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
-			"error": err.Error(),
-		})
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
 	hash, err := bcrypt.GenerateFromPassword([]byte(body.Password), bcrypt.DefaultCost)
 	if err != nil {
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
-			"error": err.Error(),
-		})
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
 	user := models.User{Email: body.Email, Password: string(hash)}
 	result := initializers.DB.Create(&user)
 	if result.Error != nil {
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
-			"error": result.Error.Error(),
-		})
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": result.Error.Error()})
 		return
 	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"sub": user.ID,
+		"exp": time.Now().Add(time.Hour * 72).Unix(),
+	})
+	tokenString, err := token.SignedString([]byte(os.Getenv("JWT_SECRET")))
+	if err != nil {
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.SetSameSite(http.SameSiteLaxMode)
+	c.SetCookie("Authorization", tokenString, 3600*24*3, "", "", false, true)
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "User created successfully",
 	})
+
+	// Produce Kafka message for automatic login
+	_ = kafka.ProduceSignupEvent(user.Email)
+
 }
 
 func Login(c *gin.Context) {
@@ -92,6 +104,9 @@ func Login(c *gin.Context) {
 		})
 		return
 	}
+
+	user.JWTToken = tokenString
+	initializers.DB.Save(&user)
 
 	c.SetSameSite(http.SameSiteLaxMode)
 	c.SetCookie("Authorization", tokenString, 3600*24*3, "", "", false, true)
@@ -221,3 +236,4 @@ func ResetPassword(c *gin.Context) {
 		"message": "Password reset successfully",
 	})
 }
+

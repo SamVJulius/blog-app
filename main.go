@@ -3,19 +3,30 @@ package main
 import (
 	"user-jwt/controllers"
 	"user-jwt/initializers"
+	"user-jwt/kafka"
 	"user-jwt/middleware"
 
 	"github.com/gin-gonic/gin"
 )
 
 func init() {
-	initializers.LoadEnvVariables()
+	initializers.LoadEnvVariables()	
 	initializers.ConnectDB()
 	initializers.SyncDatabase()
+	kafka.InitProducer()
+	kafka.InitConsumer()
 }
 
 func main() {
 	router := gin.Default()
+
+	go kafka.StartConsumer()
+
+	router.GET("/", func(c *gin.Context) {
+		c.JSON(200, gin.H{
+			"message": "Welcome to the User JWT API",
+		})
+	})
 	router.POST("/signup", controllers.SignUp)
 	router.POST("/login", controllers.Login)
 	router.GET("/users", middleware.RequireAuth, controllers.FetchUsers)
