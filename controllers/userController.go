@@ -38,26 +38,25 @@ func SignUp(c *gin.Context) {
 		return
 	}
 
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"sub": user.ID,
-		"exp": time.Now().Add(time.Hour * 72).Unix(),
-	})
-	tokenString, err := token.SignedString([]byte(os.Getenv("JWT_SECRET")))
-	if err != nil {
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
+	// token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+	// 	"sub": user.ID,
+	// 	"exp": time.Now().Add(time.Hour * 72).Unix(),
+	// })
+
+	_ = kafka.ProduceSignupEvent(user.Email)
+
+	var loginUser models.User
+
+	for loginUser.JWTToken == "" {
+		initializers.DB.Find(&loginUser, "email =?", user.Email)
 	}
 
 	c.SetSameSite(http.SameSiteLaxMode)
-	c.SetCookie("Authorization", tokenString, 3600*24*3, "", "", false, true)
+	c.SetCookie("Authorization", loginUser.JWTToken, 3600*24*3, "", "", false, true)
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "User created successfully",
 	})
-
-	// Produce Kafka message for automatic login
-	_ = kafka.ProduceSignupEvent(user.Email)
-
 }
 
 func Login(c *gin.Context) {
@@ -114,7 +113,6 @@ func Login(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{})
 }
 
-
 func FetchUsers(c *gin.Context) {
 	var users []models.User
 	initializers.DB.Find(&users)
@@ -129,11 +127,10 @@ func Validate(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"data": user.(models.User).Email,
 	})
-}	
+}
 
-
-func DeleteUser(c* gin.Context) {
-	user,_ := c.Get("user")
+func DeleteUser(c *gin.Context) {
+	user, _ := c.Get("user")
 
 	if user.(models.User).ID == 0 {
 		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
@@ -142,15 +139,13 @@ func DeleteUser(c* gin.Context) {
 		return
 	}
 
-	
 	initializers.DB.Delete(&models.User{}, user.(models.User).ID)
-	
+
 	c.SetCookie("Authorization", "", -1, "/", "", false, true)
 	c.JSON(http.StatusOK, gin.H{
 		"data": "User deleted successfully",
-	})	
+	})
 }
-
 
 func ForgetPassword(c *gin.Context) {
 	var body struct {
@@ -175,7 +170,7 @@ func ForgetPassword(c *gin.Context) {
 
 	auth := smtp.PlainAuth("", "samsonvjulius@gmail.com", os.Getenv("EMAIL_PASSWORD"), "smtp.gmail.com")
 
-	msg  := "Subject: Password Reset\n\n" +
+	msg := "Subject: Password Reset\n\n" +
 		"Click the link to reset your password: http://localhost:8080/reset-password?email=" + user.Email
 	err := smtp.SendMail("smtp.gmail.com:587", auth, "samsonvjulius@gmail.com", []string{user.Email}, []byte(msg))
 	if err != nil {
@@ -190,7 +185,6 @@ func ForgetPassword(c *gin.Context) {
 	})
 }
 
-
 func ResetPassword(c *gin.Context) {
 	var body struct {
 		NewPassword string `json:"new_password"`
@@ -201,7 +195,7 @@ func ResetPassword(c *gin.Context) {
 		})
 		return
 	}
-	
+
 	var user models.User
 
 	initializers.DB.First(&user, "email = ?", c.Query("email"))
@@ -211,7 +205,7 @@ func ResetPassword(c *gin.Context) {
 		})
 		return
 	}
-	
+
 	hash, err := bcrypt.GenerateFromPassword([]byte(body.NewPassword), bcrypt.DefaultCost)
 
 	if err != nil {
@@ -223,7 +217,7 @@ func ResetPassword(c *gin.Context) {
 
 	user.Password = string(hash)
 
-	res := initializers.DB.Save(&user)	
+	res := initializers.DB.Save(&user)
 
 	if res.Error != nil {
 		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
@@ -236,4 +230,3 @@ func ResetPassword(c *gin.Context) {
 		"message": "Password reset successfully",
 	})
 }
-
