@@ -13,6 +13,7 @@ func init() {
 	initializers.LoadEnvVariables()	
 	initializers.ConnectDB()
 	initializers.SyncDatabase()
+	initializers.InitializeMail()
 	kafka.InitProducer()
 	kafka.InitConsumer()
 }
@@ -41,7 +42,8 @@ func main() {
 		blogRoutes.POST("/", controllers.CreateBlog)         
 		blogRoutes.GET("/", controllers.GetMyBlogs) 
 		blogRoutes.GET("/:id", controllers.GetBlog)
-		blogRoutes.DELETE("/:id", controllers.DeleteBlog)         
+		blogRoutes.DELETE("/:id", controllers.DeleteBlog)
+		blogRoutes.GET("/get-by-tag/:tag", controllers.FindPostsByTag)
 	}
 	router.Run()
 }

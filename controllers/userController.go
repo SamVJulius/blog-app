@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"log"
 	"net/http"
 	"net/smtp"
 	"os"
@@ -43,6 +44,15 @@ func SignUp(c *gin.Context) {
 	// 	"exp": time.Now().Add(time.Hour * 72).Unix(),
 	// })
 
+	go func() {
+		err := smtp.SendMail("smtp.gmail.com:587", initializers.Auth, "samsonvjulius@gmail.com", []string{user.Email}, []byte("Signup successful"))
+		if err != nil {
+			log.Println("Failed to send signup email: ", err)
+		} else {
+			log.Println("Signup email sent to: ", user.Email)
+		}
+	} ()
+	
 	_ = kafka.ProduceSignupEvent(user.Email)
 
 	var loginUser models.User
@@ -168,11 +178,10 @@ func ForgetPassword(c *gin.Context) {
 		return
 	}
 
-	auth := smtp.PlainAuth("", "samsonvjulius@gmail.com", os.Getenv("EMAIL_PASSWORD"), "smtp.gmail.com")
 
 	msg := "Subject: Password Reset\n\n" +
 		"Click the link to reset your password: http://localhost:8080/reset-password?email=" + user.Email
-	err := smtp.SendMail("smtp.gmail.com:587", auth, "samsonvjulius@gmail.com", []string{user.Email}, []byte(msg))
+	err := smtp.SendMail("smtp.gmail.com:587", initializers.Auth, "samsonvjulius@gmail.com", []string{user.Email}, []byte(msg))
 	if err != nil {
 		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
 			"error": err.Error(),

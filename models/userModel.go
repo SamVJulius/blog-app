@@ -9,3 +9,4 @@ type User struct {
 	JWTToken string `gorm:"column:jwt_token"`
 	Posts    []Post
 }
+

@@ -12,7 +12,7 @@ import (
 )
 
 func RequireAuth(c *gin.Context) {
-	
+
 	tokenString, err := c.Cookie("Authorization")
 	if err != nil {
 		c.AbortWithStatusJSON(401, gin.H{"error": "Authorization cookie not found"})
@@ -23,7 +23,6 @@ func RequireAuth(c *gin.Context) {
 		return []byte(os.Getenv("JWT_SECRET")), nil
 	}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}))
 	if err != nil {
-		log.Println("JWT Token Received:", tokenString)
 		log.Fatal(err)
 	}
 

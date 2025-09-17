@@ -9,7 +9,13 @@ import (
 )
 
 func CreateBlog(c *gin.Context) {
-	var blog models.Post
+
+	var blog struct {
+		Title   string   `json:"title"`
+		Content string   `json:"content"`
+		Tags    []string `json:"tags"`
+	}
+
 	if err := c.ShouldBindJSON(&blog); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -21,9 +27,22 @@ func CreateBlog(c *gin.Context) {
 		return
 	}
 
-	blog.UserID = user.(models.User).ID
+	var tags []models.Tag
 
-	if err := initializers.DB.Create(&blog).Error; err != nil {
+	for _, tagName := range blog.Tags {
+		tag := models.Tag{Name: tagName}
+		initializers.DB.FirstOrCreate(&tag, models.Tag{Name: tagName})
+		tags = append(tags, tag)
+	}
+
+	post := models.Post{
+        Title:   blog.Title,
+        Body:    blog.Content,
+        UserID:  user.(models.User).ID, // assuming JWT middleware sets this
+        Tags:    tags,
+    }
+
+	if err := initializers.DB.Create(&post).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create blog post"})
 		return
 	}
@@ -47,7 +66,6 @@ func GetMyBlogs(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": blogs})
 }
 
-
 func GetBlog(c *gin.Context) {
 	user, exists := c.Get("user")
 
@@ -65,7 +83,6 @@ func GetBlog(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": blog})
 }
 
-
 func DeleteBlog(c *gin.Context) {
 	user, exists := c.Get("user")
 	if !exists {
@@ -78,4 +95,21 @@ func DeleteBlog(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Blog post deleted successfully"})
 }
 
+func FindPostsByTag(c *gin.Context) {
+	tag := c.Param("tag")
 
+	var post []models.Post
+	result := initializers.DB.
+		Joins("JOIN post_tags ON post_tags.post_id = posts.id").
+		Joins("JOIN tags ON tags.id = post_tags.tag_id").
+		Where("tags.name =?", tag).
+		Preload("Tags").
+		Find(&post)
+
+	if result.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": result.Error.Error()})
+		return
+	}
+
+	c.JSON((http.StatusOK), gin.H{"data": post})
+}
